@@ -196,7 +196,7 @@ def make_gif(out_path: Path, N: int = 8, fps: int = 12) -> None:
     frame_plan = build_frame_plan(patterns, N,
                                    hold_frames=6,
                                    slide_frames=3,
-                                   fadeout_frames=2)
+                                   fadeout_frames=0)
 
     fig, ax = plt.subplots(figsize=(7.5, 4.4), dpi=110)
     fig.patch.set_facecolor("white")
