@@ -20,18 +20,26 @@ cost = matmul.score_16x16(ir)
 
 ir = matmul.generate_tiled_16x16()       # 4×4 scratchpad-cached tiles
 cost = matmul.score_16x16(ir)
+
+ir = matmul.generate_outer_product_4x4()    # 4×4 outer product, size-1 sA
+cost = matmul.score_4x4(ir)
+
+ir = matmul.generate_hierarchical_16x16()   # 16×16 hierarchical asym. reload
+cost = matmul.score_16x16(ir)
 ```
 
 
 ## 4×4 Record History
 
-| date       | method                              | IR                                          | cost  |
-|------------|-------------------------------------|---------------------------------------------|------:|
-| 2026-04-29 | `generate_baseline_4x4` (naive)     | [`ir/baseline_4x4.ir`](ir/baseline_4x4.ir)  | 1,316 |
+| date       | method                                        | IR                                                    | cost  |
+|------------|-----------------------------------------------|-------------------------------------------------------|------:|
+| 2026-04-29 | `generate_baseline_4x4` (naive)               | [`ir/baseline_4x4.ir`](ir/baseline_4x4.ir)            | 1,316 |
+| 2026-04-29 | `generate_outer_product_4x4` (size-1 sA)      | [`ir/outer_product_4x4.ir`](ir/outer_product_4x4.ir)  |   800 |
 
 ## 16×16 Record History
 
-| date       | method                              | IR                                              | cost    |
-|------------|-------------------------------------|-------------------------------------------------|--------:|
-| 2026-04-29 | `generate_baseline_16x16` (naive)   | [`ir/baseline_16x16.ir`](ir/baseline_16x16.ir)  | 340,704 |
-| 2026-04-29 | `generate_tiled_16x16` (4×4 tiles)  | [`ir/tiled_16x16.ir`](ir/tiled_16x16.ir)        | 133,783 |
+| date       | method                                        | IR                                                        | cost    |
+|------------|-----------------------------------------------|-----------------------------------------------------------|--------:|
+| 2026-04-29 | `generate_baseline_16x16` (naive)             | [`ir/baseline_16x16.ir`](ir/baseline_16x16.ir)            | 340,704 |
+| 2026-04-29 | `generate_tiled_16x16` (4×4 tiles)            | [`ir/tiled_16x16.ir`](ir/tiled_16x16.ir)                  | 133,783 |
+| 2026-04-29 | `generate_hierarchical_16x16` (asym. reload)  | [`ir/hierarchical_16x16.ir`](ir/hierarchical_16x16.ir)    |  80,217 |

@@ -12,6 +12,8 @@ from .matmul import (  # noqa: F401
     generate_baseline_4x4,
     generate_baseline_16x16,
     generate_tiled_16x16,
+    generate_outer_product_4x4,
+    generate_hierarchical_16x16,
 )
 
 # Re-export private helpers so the in-tree test suite can probe them.
@@ -24,4 +26,6 @@ __all__ = [
     "generate_baseline_4x4",
     "generate_baseline_16x16",
     "generate_tiled_16x16",
+    "generate_outer_product_4x4",
+    "generate_hierarchical_16x16",
 ]
