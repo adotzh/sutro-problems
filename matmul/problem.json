@@ -1,0 +1,11 @@
+{
+  "name": "matmul",
+  "description": "Energy-efficient 16x16 matrix multiplication under the Dally cost model",
+  "record_glob": "ir/new_record_*.ir",
+  "record_cost_pattern": "new_record_[a-z_]*(\\d+)",
+  "record_lower_is_better": true,
+  "baseline": 110487,
+  "stall_minutes": 15,
+  "stall_min_files": 3,
+  "experiment_glob": "exp_*.py"
+}

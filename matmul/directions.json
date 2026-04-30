@@ -1,0 +1,70 @@
+{
+  "record": 73602,
+  "record_file": "ir/new_record_sa_cache_73602.ir",
+  "directions": [
+    {
+      "id": "nonsquare",
+      "name": "Non-square tiles",
+      "status": "done",
+      "best_score": 82477,
+      "prompt": null,
+      "summary": "Ti=8,Tj=4,Tk=1 non-square tiles. Superseded by rank2/sA-cache."
+    },
+    {
+      "id": "rank2_sa_cache",
+      "name": "sA-cache single-cell + sB scratchpad",
+      "status": "done",
+      "best_score": 73602,
+      "prompt": null,
+      "summary": "Cache A[ii,bk] in addr 1 (cost 1) before inner jj loop. sB at 3-6, sC at 7-38. Analytically proven optimal for this family."
+    },
+    {
+      "id": "a_tile_reuse",
+      "name": "A-tile reuse across bj (loop reorder bi>bk>bj)",
+      "status": "done",
+      "best_score": 147365,
+      "prompt": null,
+      "summary": "Expensive bulk-C reload kills the savings from fewer A copies."
+    },
+    {
+      "id": "strassen_tile",
+      "name": "Strassen 2x2 within tiles",
+      "status": "done",
+      "best_score": 196026,
+      "prompt": null,
+      "summary": "M-values at addr 50+ (cost 8) too expensive to read repeatedly."
+    },
+    {
+      "id": "strassen_low_addr",
+      "name": "Strassen with M-values at addr 1-7",
+      "status": "done",
+      "best_score": 169174,
+      "summary": "Place all 7 Strassen M-values at addr 1-7 (cost 1-3). Each M value used 2-3 times in outputs.",
+      "prompt": "Strassen's algorithm multiplies 2x2 matrices with 7 products instead of 8.\n\nFormula (A=[[a,b],[c,d]], B=[[e,f],[g,h]]):\n  M1=(a+d)*(e+h)  \u2192 C[0,0], C[1,1]\n  M2=(c+d)*e      \u2192 C[1,0], C[1,1]\n  M3=a*(f-h)      \u2192 C[0,1], C[1,1]\n  M4=d*(g-e)      \u2192 C[0,0], C[1,0]\n  M5=(a+b)*h      \u2192 C[0,0], C[0,1]\n  M6=(c-a)*(e+f)  \u2192 C[1,1]\n  M7=(b-d)*(g+h)  \u2192 C[0,0]\n  C[0,0]=M1+M4-M5+M7, C[0,1]=M3+M5, C[1,0]=M2+M4, C[1,1]=M1-M2+M3+M6\n\nKey: place M1..M7 at addr 1-7 (cost 1-3). Place intermediate sums at addr 8-14.\nTile 16x16 into 2x2 blocks (nb=8). For each 2x2 output block, accumulate\nStrassen products across all 8 bk reduction blocks. Previous Strassen attempt\nfailed because M-values were at addr 50+ (cost 8) \u2014 low addresses are the fix."
+    },
+    {
+      "id": "column_streaming",
+      "name": "Stream single A column (Ti=16, Tj=1, Tk=1)",
+      "status": "pending",
+      "best_score": null,
+      "summary": "Cache A[:,k] in addr 2-17, load B[k,j] to addr 1, compute full output column. Each A value reused 16 times at cost 2-5.",
+      "prompt": "For each k (0..15):\n  1. Copy A[:,k] (16 values) into sA_col at addr 2-17 (cost 2-5).\n     This column is reused for all 16 j values.\n  2. For each j (0..15):\n     a. Copy B[k,j] to addr 1 (cost 1) \u2014 1 bulk read per j.\n     b. For each i (0..15): mul tmp, sA_col[i], B_cache; add/init C_scratch[i]\n  3. After all k: write C_scratch accumulated values to bulk C.\n\nEach A[i,k] read 16 times from sA at cost 2-5 (much cheaper than bulk cost 5-17).\nEach B[k,j] read 16 times from addr 1 at cost 1.\nC accumulator at addr 18-33 (cost 5-6)."
+    },
+    {
+      "id": "cascade_tiling",
+      "name": "Three-level cascade: 16x16 -> 4x4 -> 2x2",
+      "status": "pending",
+      "best_score": null,
+      "summary": "Innermost 2x2 scratchpad at addr 1-4 (cost 1-2), loaded from 4x4 mid-scratchpad, loaded from bulk.",
+      "prompt": "Three tiling levels:\n  Level 3 (innermost): 2x2 computation. sA at addr 2-5, sB at 6-9, sC at 10-13, tmp at 1.\n  Level 2 (mid): 4x4 tile scratchpad at addr 14-45 (cost 4-7).\n  Level 1 (outer): bulk at addr 46+.\n\nEach inner 2x2 read happens at cost 1-4. The extra copy overhead at the mid\nlevel should be outweighed by cheaper inner arithmetic reads. Implement and\nmeasure the breakdown at each level."
+    },
+    {
+      "id": "sub_op_tricks",
+      "name": "Algebraic pre-summation to reduce mul reads",
+      "status": "pending",
+      "best_score": null,
+      "summary": "Pre-compute pairwise sums/differences (free additions) before multiplications to reduce number of distinct source reads.",
+      "prompt": "Additions are FREE. Use this to reduce the number of distinct addresses read by muls.\n\nFor each 2x2 sub-block, pre-compute:\n  (a+d), (c+d), (a+b), (c-a), (b-d), (f-h), (g-e), (e+h), (e+f), (g+h)\nas additions (free, 1 write each). Then do 7 Strassen muls reading only these\npre-computed values from low-cost addresses.\n\nThe key: pre-computed sums live at addr 1-10 (cost 1-4) and are each read exactly\nonce. Strassen M-values at addr 11-17 (cost 4), each read 2-3 times.\nCompare total cost vs direct Strassen without pre-sums."
+    }
+  ]
+}
