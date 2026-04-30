@@ -269,3 +269,27 @@ __all__ = [
     "generate_baseline_4x4", "generate_baseline_16x16",
     "generate_tiled_16x16",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Reproducer for the record-history IR files (run `python matmul.py`).
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import os
+    here = os.path.dirname(os.path.abspath(__file__))
+    ir_dir = os.path.join(here, "ir")
+    os.makedirs(ir_dir, exist_ok=True)
+    artifacts = [
+        ("baseline_4x4.ir",   generate_baseline_4x4(),   score_4x4),
+        ("baseline_16x16.ir", generate_baseline_16x16(), score_16x16),
+        ("tiled_16x16.ir",    generate_tiled_16x16(),    score_16x16),
+    ]
+    for name, ir, scorer in artifacts:
+        cost = scorer(ir)
+        path = os.path.join(ir_dir, name)
+        with open(path, "w") as f:
+            f.write(ir)
+            f.write("\n")
+        n_ops = len(ir.splitlines()) - 2
+        print(f"  {name:<22} cost={cost:>10,}  ops={n_ops:>6,}  -> {path}")

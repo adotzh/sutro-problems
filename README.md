@@ -20,7 +20,7 @@ To add a new problem, create a new directory and add a `README.md` at its root.
 - [`wip-boltzmann-shifter/`](wip-boltzmann-shifter/) — the shift-direction
   inference task from Hinton & Sejnowski's Boltzmann-machine chapter
   (PDP Vol 1, 1986). _(work in progress)_
-- [`energy-efficient-matmul/`](energy-efficient-matmul/) — cheapest matrix
-  multiplication under a simplified Dally explicit-communication cost
-  model (data movement priced; arithmetic free). Baseline costs: 4×4
-  naive 1,316; 16×16 naive 340,704; 16×16 tiled 133,783.
+- [`matmul/`](matmul/) — cheapest matrix multiplication under a
+  simplified Dally explicit-communication cost model (data movement
+  priced; arithmetic free). Records: 4×4 naive 1,316; 16×16 naive
+  340,704; 16×16 tiled 133,783.
