@@ -1,78 +1,12 @@
 # energy-efficient-matmul
 
-What is the cheapest algorithm to multiply two matrices when *energy*
-is the cost function rather than *FLOP count*?
+DeepMind's AlphaTensor https://github.com/google-deepmind/alphatensor discover a better 4x4 matrix multiplication algorithm in terms of arithmetic operations. 
 
-DeepMind's AlphaTensor / AlphaEvolve advertise their matrix-multiplication
-algorithms by counting arithmetic operations. On modern hardware
-arithmetic is essentially free; the cost is dominated by data movement.
-This problem rescores the same algorithms under a model that prices
-data movement explicitly and asks for the cheapest correct schedule.
+What is best algorithm when we care about *energy* rather than *FLOP count*?
 
-## Cost model
+To estimate energy, use simplified version of Bill Dally's proposed *Parallel Explicit Communication
+Model* [cybertronai/simplified-dally-model](https://github.com/cybertronai/simplified-dally-model).
 
-A simplified version of Bill Dally's *Parallel Explicit Communication
-Model* — see [cybertronai/simplified-dally-model](https://github.com/cybertronai/simplified-dally-model).
-
-- Processor at the origin; memory is a 2D upper half-plane, linearly
-  indexed. Cell `addr` sits at Manhattan distance `⌈√addr⌉` from the
-  core.
-- **Reads are priced** (one read = `⌈√addr⌉`).
-- **Writes are free.**
-- **Arithmetic is free.**
-- **At the start of a call** the caller specifies where every input
-  byte lives; placement is free.
-- **At the end of a call** the caller specifies the output addresses;
-  each output pays one standard read.
-
-## IR
-
-Three-address SSA-flavored code, `;`-or-newline separated:
-
-| Instruction              | Effect                              | Reads |
-|--------------------------|-------------------------------------|------:|
-| `add dest, src1, src2`   | `mem[dest] = mem[src1] + mem[src2]` |  2    |
-| `sub dest, src1, src2`   | `mem[dest] = mem[src1] - mem[src2]` |  2    |
-| `mul dest, src1, src2`   | `mem[dest] = mem[src1] * mem[src2]` |  2    |
-| `mov dest, src`          | `mem[dest] = mem[src]`              |  1    |
-
-The 4th op (`mov`) is what makes scratchpad-style tiling possible in
-this model — there is no implicit cache, so re-using a value cheaply
-requires explicitly copying it to a low address. Two-operand short
-form for the binary ops: `add dest, src` is sugar for
-`add dest, dest, src`.
-
-A program is the input-placement line, a sequence of instructions, and
-the output-read line:
-
-```
-1,2                  ← inputs at addrs 1 and 2
-mul 3,1,2            ← mem[3] = mem[1] * mem[2];  reads ⌈√1⌉ + ⌈√2⌉ = 1+2
-3                    ← exit: read addr 3;        cost ⌈√3⌉ = 2
-```
-
-Total cost = `1 + 2 + 2 = 5`.
-
-## Worked example (`myfunc(a,b,c,d,e) = a*b + c*d + e`)
-
-```
-1,2,3,4,5            ← a@1, b@2, c@3, d@4, e@5
-mul 1,1,2            ← t1 = a*b → addr 1
-mul 2,3,4            ← t2 = c*d → addr 2
-add 1,1,2            ← s  = t1 + t2 → addr 1
-add 1,5              ← r  = s + e   → addr 1     (in-place form)
-1                    ← exit: read addr 1
-```
-
-| step | reads          | cost  |
-|-----:|----------------|------:|
-| 1    | `a@1`, `b@2`   | 1+2   |
-| 2    | `c@3`, `d@4`   | 2+2   |
-| 3    | `t1@1`, `t2@2` | 1+2   |
-| 4    | `s@1`, `e@5`   | 1+3   |
-| exit | `r@1`          | 1     |
-
-Total: `(1+2) + (2+2) + (1+2) + (1+3) + 1 = 15`.
 
 ## API
 
