@@ -36,22 +36,3 @@ cost = matmul.score_16x16(ir)
 |------------|-------------------------------------|-------------------------------------------------|--------:|
 | 2026-04-29 | `generate_baseline_16x16` (naive)   | [`ir/baseline_16x16.ir`](ir/baseline_16x16.ir)  | 340,704 |
 | 2026-04-29 | `generate_tiled_16x16` (4×4 tiles)  | [`ir/tiled_16x16.ir`](ir/tiled_16x16.ir)        | 133,783 |
-
-The tiled record is **2.55× cheaper** than the naive 16×16 baseline
-despite issuing 32 % more instructions — the extra `mov` traffic
-loading 4×4 A/B tiles into addrs 1..32 is more than paid back by the
-inner `mul`/`add` reads now hitting distance-1..6 cells instead of
-distance-15..23 cells. That's the energy-vs-FLOPs gap the problem is
-designed to expose.
-
-To beat 133,783 on 16×16, drop a `generate_<your_method>()` into
-`matmul.py`, rerun `python matmul.py` to regenerate the IR file under
-`ir/`, and add a row above.
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `matmul.py` | Scorer, parser, simulator, and the three baseline generators (`generate_baseline_4x4`, `generate_baseline_16x16`, `generate_tiled_16x16`). Run `python matmul.py` to regenerate the record-history IR files under `ir/`. |
-| `ir/*.ir`   | The IR text emitted by each entry in the record-history tables; viewable inline on GitHub. |
-| `README.md` | This file. |
