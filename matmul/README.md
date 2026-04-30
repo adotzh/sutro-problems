@@ -1,10 +1,8 @@
 # matmul
 
-- DeepMind's AlphaTensor https://github.com/google-deepmind/alphatensor discover a better 4x4 matrix multiplication algorithm in terms of arithmetic operations. 
-
-- What is best algorithm when we care about *energy* rather than *FLOP count*?
-
-- For energy, use simplified version of Bill Dally's proposed *Parallel Explicit Communication Model* [cybertronai/simplified-dally-model](https://github.com/cybertronai/simplified-dally-model).
+- DeepMind's AlphaTensor https://github.com/google-deepmind/alphatensor discover a better 4x4 matrix multiplication algorithm in terms of FLOPs. 
+- What is the best algorithm when we care about *energy* rather than *FLOPs*?
+- Use [simplified version]([cybertronai/simplified-dally-model](https://github.com/cybertronai/simplified-dally-model)) of Bill Dally' *Parallel Explicit Communication Model* to measure energy.
 
 
 ## API
