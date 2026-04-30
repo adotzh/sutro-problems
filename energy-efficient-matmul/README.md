@@ -109,13 +109,13 @@ ir = generate_tiled_16x16()       # 4×4 scratchpad-cached tiles
 
 ## Current best results
 
-| matrices | algorithm                           | reads | cost     |
-|----------|-------------------------------------|------:|---------:|
-| 4×4      | `generate_baseline_4x4` (naive)     |   112 |   1,316  |
-| 16×16    | `generate_baseline_16x16` (naive)   | 7,936 | 340,704  |
-| 16×16    | `generate_tiled_16x16` (4×4 tiles)  |10,496 | 133,783  |
+| matrices | algorithm                           | cost     |
+|----------|-------------------------------------|---------:|
+| 4×4      | `generate_baseline_4x4` (naive)     |   1,316  |
+| 16×16    | `generate_baseline_16x16` (naive)   | 340,704  |
+| 16×16    | `generate_tiled_16x16` (4×4 tiles)  | 133,783  |
 
-**Tiled wins by 2.55×** despite issuing **32 % more instructions** —
+**Tiled wins by 2.55×** despite issuing 32 % more instructions —
 the extra `mov` traffic loading 4×4 A/B tiles into addresses 1..32 is
 more than paid back by the inner `mul`/`add` reads now hitting
 distance-1..6 cells instead of distance-15..23 cells. This is the
