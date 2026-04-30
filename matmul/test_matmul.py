@@ -19,8 +19,23 @@ def test_score_1x1_worked_example():
       * `mul 3,1,2`  reads addr 1 (cost ⌈√1⌉=1) + addr 2 (cost ⌈√2⌉=2)
       * exit         reads addr 3 (cost ⌈√3⌉=2)
     Total: 1 + 2 + 2 = 5.
+
+    The 1×1 test data is now ``A=[[1]], B=[[3]], C=[[3]]`` (B is no
+    longer the transpose of A), so this IR — which actually computes
+    ``A·B`` — gives the right answer 3, while a degenerate IR that
+    just returned ``A[0][0]`` (= 1) would now fail correctness.
     """
     assert matmul.score_1x1("1,2;mul 3,1,2;3") == 5
+
+
+def test_score_1x1_rejects_identity_ir():
+    """Sanity check that the non-symmetric test data catches an
+    "identity" IR that returns A[0][0] instead of A[0][0] * B[0][0].
+    Under the old A=B^T data this passed coincidentally; under the
+    new data ``A=[[1]], B=[[3]]`` it must fail correctness."""
+    identity = "1,2;copy 3,1;3"   # mem[3] = mem[1] = A[0][0]; expects C != A
+    with pytest.raises(ValueError, match="correctness failed"):
+        matmul.score_1x1(identity)
 
 
 def test_score_myfunc_worked_example():
@@ -75,6 +90,59 @@ def test_score_1x1_rejects_wrong_arithmetic():
     bad = "1,2;add 3,1,2;3"
     with pytest.raises(ValueError, match="correctness failed"):
         matmul.score_1x1(bad)
+
+
+# ---------------------------------------------------------------------------
+# v0 instruction-set conformance
+# ---------------------------------------------------------------------------
+
+def test_legacy_mov_is_rejected():
+    """v0 spells the data-movement op `copy`; legacy `mov` must raise."""
+    with pytest.raises(ValueError, match="unknown op.*mov"):
+        matmul.score_1x1("1,2;mov 3,1;3")
+
+
+def test_unknown_op_is_rejected():
+    with pytest.raises(ValueError, match="unknown op"):
+        matmul.score_1x1("1,2;fma 3,1,2;3")
+
+
+def test_2x2_non_symmetric_test_data():
+    """Validation matrices for ``n=2`` produce a non-symmetric C, so an
+    IR that confused i,j somewhere can't pass coincidentally."""
+    inputs, expected = matmul._matmul_test(2)
+    # A = [[1,2],[3,4]] (1..4),  B[i][j] = i + 2j + 3 → [[3,5],[4,6]],
+    # C = A @ B = [[1·3+2·4, 1·5+2·6], [3·3+4·4, 3·5+4·6]]
+    #            = [[11, 17], [25, 39]]
+    assert expected == [11, 17, 25, 39]
+    assert expected[1] != expected[2]   # not symmetric
+
+
+# ---------------------------------------------------------------------------
+# Positive-address validation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad_ir", [
+    "0,2;mul 3,1,2;3",            # input addr 0
+    "1,-1;mul 3,1,2;3",           # input addr -1
+    "1,2;mul 0,1,2;3",            # op writing to addr 0
+    "1,2;mul 3,0,2;3",            # op reading from addr 0
+    "1,2;mul 3,1,2;0",            # output addr 0
+    "1,2;copy -5,1;3",            # negative copy dest
+])
+def test_non_positive_address_raises(bad_ir):
+    with pytest.raises(ValueError, match="positive integers"):
+        matmul.score_1x1(bad_ir)
+
+
+def test_cost_helper_rejects_zero():
+    with pytest.raises(ValueError, match="positive integers"):
+        matmul._cost(0)
+
+
+def test_cost_helper_rejects_negative():
+    with pytest.raises(ValueError, match="positive integers"):
+        matmul._cost(-3)
 
 
 # ---------------------------------------------------------------------------

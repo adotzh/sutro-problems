@@ -1,31 +1,38 @@
 """Energy-efficient matrix multiplication scorer + baselines.
 
 Scores IR programs that compute ``C = A @ B`` under the
-[simplified Dally model](https://github.com/cybertronai/simplified-dally-model):
-processor at the origin, memory laid out as a 2D upper half-plane, the
-linear cell index `addr` sits at Manhattan distance ``⌈√addr⌉`` from the
-core. Reads are priced; writes and arithmetic are free; inputs are
-placed for free at caller-specified addresses; every output address
-pays the standard read cost at exit.
+[simplified Dally model](https://github.com/cybertronai/simplified-dally-model)
+using the
+[v0 instruction set](https://github.com/cybertronai/simplified-dally-model/tree/main/instruction-sets/v0)
+(``add``, ``sub``, ``mul``, ``copy``).
 
-Three-address-code IR (one instruction per line; ``;`` is also a line
-separator so that single-line strings work):
+**Cost model (v0).** Processor at the origin, memory laid out as a
+2D upper half-plane indexed by **positive integers**; the cell at
+linear index ``addr`` sits at Manhattan distance ``⌈√addr⌉`` from the
+core. Each operand read pays that distance; writes and arithmetic are
+free; inputs are placed for free at caller-specified addresses; every
+output address pays one standard read at exit.
+
+Three-address-code IR (one instruction per line; ``;`` is also a
+line separator so that single-line strings work):
 
     1,2                   ← input placement: A@1, B@2
-    mul 3,1,2             ← mem[3] = mem[1] * mem[2]; reads cost ⌈√1⌉ + ⌈√2⌉
+    mul 3,1,2             ← mem[3] = mem[1] * mem[2]; reads ⌈√1⌉ + ⌈√2⌉
     3                     ← exit: read mem[3]; cost ⌈√3⌉
 
-Supported ops:
+Supported ops (all four come straight from v0):
 
 * ``add dest, src1, src2``  — ``mem[dest] = mem[src1] + mem[src2]``
 * ``sub dest, src1, src2``  — ``mem[dest] = mem[src1] - mem[src2]``
 * ``mul dest, src1, src2``  — ``mem[dest] = mem[src1] * mem[src2]``
-* ``mov dest, src``         — ``mem[dest] = mem[src]``  (1 read; needed for
-  scratchpad-style tiling, where you copy a far-away cell into a cheap
-  scratch slot once and then re-read the scratch slot many times)
+* ``copy dest, src``        — ``mem[dest] = mem[src]``  (1 read; needed
+  for scratchpad-style tiling, where you copy a far-away cell into a
+  cheap scratch slot once and then re-read it many times)
 
-Two-operand short form for the binary ops: ``add dest, src`` is
-equivalent to ``add dest, dest, src`` (in-place accumulate).
+Two-operand short form for the binary ops: ``add dest, src`` is wire
+sugar for ``add dest, dest, src`` (in-place accumulate); the ops it
+expands into are still v0-conformant. Addresses must be positive
+integers; ``addr ≤ 0`` raises.
 """
 from __future__ import annotations
 
@@ -38,8 +45,25 @@ from typing import List, Tuple
 # ---------------------------------------------------------------------------
 
 def _cost(addr: int) -> int:
-    """⌈√addr⌉ for ``addr ≥ 1``; 0 otherwise."""
-    return math.isqrt(addr - 1) + 1 if addr >= 1 else 0
+    """``⌈√addr⌉`` for a positive integer ``addr``; raises otherwise.
+
+    The simplified Dally model only addresses cells with linear index
+    ``≥ 1``; ``addr = 0`` is the (off-grid) ALU position and is not a
+    valid memory cell. Rejecting non-positive addresses here means a
+    typo'd or otherwise malformed IR can't slip through with a free
+    read.
+    """
+    if not isinstance(addr, int) or addr < 1:
+        raise ValueError(
+            f"addresses must be positive integers; got {addr!r}")
+    return math.isqrt(addr - 1) + 1
+
+
+def _check_addrs(addrs, where):
+    for a in addrs:
+        if not isinstance(a, int) or a < 1:
+            raise ValueError(
+                f"{where}: addresses must be positive integers; got {a!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -60,12 +84,16 @@ def _parse(ir: str):
         raise ValueError("IR needs at least an input line and an output line")
     input_addrs = [int(x) for x in lines[0].split(",")]
     output_addrs = [int(x) for x in lines[-1].split(",")]
+    _check_addrs(input_addrs,  "input line")
+    _check_addrs(output_addrs, "output line")
     ops = []
     for ln in lines[1:-1]:
         head, _, rest = ln.partition(" ")
         if not rest:
             raise ValueError(f"malformed instruction: {ln!r}")
-        ops.append((head, [int(x) for x in rest.split(",")]))
+        operands = [int(x) for x in rest.split(",")]
+        _check_addrs(operands, f"`{head}` operands")
+        ops.append((head, operands))
     return input_addrs, ops, output_addrs
 
 
@@ -79,18 +107,18 @@ def _simulate(ir: str, inputs: List[int]) -> Tuple[List[int], int]:
     mem = {a: v for a, v in zip(input_addrs, inputs)}
     cost = 0
     for op, oprs in ops:
-        if op == "mov":
+        if op == "copy":
             if len(oprs) != 2:
-                raise ValueError(f"mov needs 2 operands: mov {oprs}")
+                raise ValueError(f"copy needs 2 operands: copy {oprs}")
             dest, src = oprs
             if src not in mem:
                 raise ValueError(
-                    f"mov {dest},{src} reads uninitialized addr {src}")
+                    f"copy {dest},{src} reads uninitialized addr {src}")
             cost += _cost(src)
             mem[dest] = mem[src]
             continue
         if op not in _BINARY:
-            raise ValueError(f"unknown op: {op}")
+            raise ValueError(f"unknown op: {op!r}  (v0 supports add/sub/mul/copy)")
         if len(oprs) == 3:
             dest, s1, s2 = oprs
         elif len(oprs) == 2:
@@ -125,9 +153,17 @@ def _matmul_test(n: int):
     A flattened row-major first (``n²`` values), then B flattened
     row-major (``n²`` values), so ``2 n²`` inputs total. Outputs:
     C flattened row-major (``n²`` values).
+
+    The two formulas below produce distinct, **non-symmetric** test
+    data on purpose — earlier versions used ``B = A.T`` which made
+    ``C = A·B = A·A.T`` symmetric, allowing IRs that confused the
+    ``i, j`` indices to pass coincidentally. With the current data,
+    ``C[i,j] != C[j,i]`` for ``n ≥ 2``, and the 1×1 case has
+    ``A = [[1]], B = [[3]], C = [[3]]`` so an identity-IR returning
+    ``A[0][0]`` no longer passes ``score_1x1``.
     """
     A = [[i * n + j + 1 for j in range(n)] for i in range(n)]
-    B = [[j * n + i + 1 for j in range(n)] for i in range(n)]
+    B = [[i + 2 * j + 3 for j in range(n)] for i in range(n)]
     C = [[sum(A[i][k] * B[k][j] for k in range(n)) for j in range(n)]
          for i in range(n)]
     inputs = ([A[i][j] for i in range(n) for j in range(n)] +
@@ -196,11 +232,11 @@ def generate_baseline_16x16() -> str: return _baseline(16)
 
 def generate_tiled_16x16() -> str:
     """Tiled matmul with 4×4 scratchpad-cached A/B tiles + a 4×4 sC
-    accumulator. ``mov`` instructions copy each A/B tile into the
-    cheapest 48 cells of memory once per ``(bi, bj, bk)`` block, so the
-    inner ``mul`` reads hit short-distance addresses. The accumulated
-    sC tile is then ``mov``-copied out to its final position in the C
-    bulk.
+    accumulator. ``copy`` instructions move each A/B tile into the
+    cheapest 48 cells of memory once per ``(bi, bj, bk)`` block, so
+    the inner ``mul`` reads hit short-distance addresses. The
+    accumulated sC tile is then ``copy``-ed out to its final position
+    in the C bulk.
 
     Layout:
       sA at 1..16   (4×4 cached A-tile)
@@ -237,12 +273,12 @@ def generate_tiled_16x16() -> str:
                 for ii in range(T):
                     for kk in range(T):
                         lines.append(
-                            f"mov {sA(ii,kk)},{A_at(bi*T+ii, bk*T+kk)}")
+                            f"copy {sA(ii,kk)},{A_at(bi*T+ii, bk*T+kk)}")
                 # Load B-tile B[bk*T:.., bj*T:..] -> sB
                 for kk in range(T):
                     for jj in range(T):
                         lines.append(
-                            f"mov {sB(kk,jj)},{B_at(bk*T+kk, bj*T+jj)}")
+                            f"copy {sB(kk,jj)},{B_at(bk*T+kk, bj*T+jj)}")
                 # Inner T³ contraction: sC[ii,jj] += sA[ii,kk] * sB[kk,jj]
                 for ii in range(T):
                     for jj in range(T):
@@ -251,14 +287,14 @@ def generate_tiled_16x16() -> str:
                                 f"mul {tmp},{sA(ii,kk)},{sB(kk,jj)}")
                             if bk == 0 and kk == 0:
                                 # First product initializes sC[ii,jj].
-                                lines.append(f"mov {sC(ii,jj)},{tmp}")
+                                lines.append(f"copy {sC(ii,jj)},{tmp}")
                             else:
                                 lines.append(f"add {sC(ii,jj)},{tmp}")
             # End of (bi, bj) block: write sC out to bulk C.
             for ii in range(T):
                 for jj in range(T):
                     lines.append(
-                        f"mov {C_at(bi*T+ii, bj*T+jj)},{sC(ii,jj)}")
+                        f"copy {C_at(bi*T+ii, bj*T+jj)},{sC(ii,jj)}")
 
     lines.append(",".join(map(str, outputs)))
     return "\n".join(lines)
